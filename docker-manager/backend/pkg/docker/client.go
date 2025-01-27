@@ -54,9 +54,6 @@ func (c *Client) DeployCompose(ctx context.Context, composePath string) error {
 	if err := c.createNetworks(ctx, config.Networks); err != nil {
 		return err
 	}
-	if err := c.createVolumes(ctx, config.Volumes); err != nil {
-		return err
-	}
 
 	// 部署服务
 	for name, service := range config.Services {
@@ -68,6 +65,7 @@ func (c *Client) DeployCompose(ctx context.Context, composePath string) error {
 	return nil
 }
 
+// 创建网络函数
 func (c *Client) createNetworks(ctx context.Context, networks map[string]struct{}) error {
 	for name := range networks {
 		_, err := c.NetworkCreate(ctx, name, types.NetworkCreate{})
@@ -78,16 +76,7 @@ func (c *Client) createNetworks(ctx context.Context, networks map[string]struct{
 	return nil
 }
 
-func (c *Client) createVolumes(ctx context.Context, volumes map[string]struct{}) error {
-	for name := range volumes {
-		_, err := c.VolumeCreate(ctx, volume.VolumeCreateBody{Name: name})
-		if err != nil && !client.IsErrNotFound(err) {
-			return fmt.Errorf("创建存储卷%s失败: %w", name, err)
-		}
-	}
-	return nil
-}
-
+// 部署服务
 func (c *Client) deployService(ctx context.Context, name string, service ServiceConfig) error {
 	// 拉取镜像
 	reader, err := c.ImagePull(ctx, service.Image, types.ImagePullOptions{})
@@ -130,6 +119,7 @@ func (c *Client) deployService(ctx context.Context, name string, service Service
 	return nil
 }
 
+// 转换环境变量映射为数组
 func convertEnvMap(env map[string]string) []string {
 	var result []string
 	for k, v := range env {
@@ -138,6 +128,7 @@ func convertEnvMap(env map[string]string) []string {
 	return result
 }
 
+// 解析端口映射
 func parsePorts(ports []string) nat.PortMap {
 	portMap := make(nat.PortMap)
 	for _, binding := range ports {
@@ -166,9 +157,4 @@ func NewDockerClient() (*Client, error) {
 		return nil, err
 	}
 	return &Client{cli}, nil
-}
-
-// 原方法声明
-func (c *Client) DeployCompose(ctx context.Context, composePath string) error {
-	// 保持原有实现不变
 }

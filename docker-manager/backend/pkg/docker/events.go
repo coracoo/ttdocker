@@ -27,7 +27,7 @@ func WatchDockerEvents(cli *client.Client) {
 					return
 				}
 				if BroadcastFunc != nil {
-					BroadcastFunc(event)
+					BroadcastFunc(event) // 确保参数类型一致
 				}
 			case err, ok := <-errChan:
 				if !ok {

@@ -40,15 +40,23 @@ func RegisterContainerRoutes(r *gin.Engine) {
 	}
 }
 
-// 其他处理函数实现（需首字母小写）
+// 其他处理函数实现
 func startContainer(c *gin.Context) {
-	id := c.Param("id")
+	//id := c.Param("id")
 	// 实现启动逻辑...
 }
 
 func stopContainer(c *gin.Context) {
-	id := c.Param("id")
+	//id := c.Param("id")
 	// 实现停止逻辑...
 }
 
-// 类似实现其他处理函数...
+func createContainer(c *gin.Context) {
+	//id := c.Param("id")
+	// 实现创建逻辑...
+}
+
+func removeContainer(c *gin.Context) {
+	//id := c.Param("id")
+	// 实现移除逻辑...
+}

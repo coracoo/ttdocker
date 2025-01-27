@@ -4,10 +4,11 @@ package main
 import (
 	"context"
 	"dockerpanel/backend/api"
-	"dockerpanel/backend/pkg/docker" // 模块路径+包路径
+	"dockerpanel/backend/pkg/docker"
 	"encoding/json"
 	"fmt"
 
+	"github.com/docker/docker/api/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -34,7 +35,7 @@ func main() {
 	defer cli.Close()
 
 	// 启动事件监听
-	go docker.WatchDockerEvents(cli)
+	go docker.WatchDockerEvents(cli.Client)
 
 	version, err := cli.ServerVersion(context.Background())
 	if err != nil {
