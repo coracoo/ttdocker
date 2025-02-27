@@ -4,37 +4,31 @@ package docker // 必须作为第一行
 import (
 	"context"
 	"log"
-
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types"      // 添加这个导入
+	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/client"
 )
 
-// 新增广播函数定义
-var BroadcastFunc func(types.Message)
+// 使用正确的类型 events.Message
+var BroadcastFunc func(events.Message)
 
-func SetBroadcastHandler(fn func(types.Message)) {
-	BroadcastFunc = fn
+func SetBroadcastHandler(fn func(events.Message)) {
+    BroadcastFunc = fn
 }
 
 func WatchDockerEvents(cli *client.Client) {
-	eventsChan, errChan := cli.Events(context.Background(), types.EventsOptions{})
+    ctx := context.Background()
+    eventsChan, errChan := cli.Events(ctx, types.EventsOptions{})  // 现在可以使用 types.EventsOptions
 
-	go func() { // 使用goroutine避免阻塞
-		for {
-			select {
-			case event, ok := <-eventsChan:
-				if !ok {
-					return
-				}
-				if BroadcastFunc != nil {
-					BroadcastFunc(event) // 确保参数类型一致
-				}
-			case err, ok := <-errChan:
-				if !ok {
-					return
-				}
-				log.Printf("Docker event error: %v", err)
-			}
-		}
-	}()
+    for {
+        select {
+        case event := <-eventsChan:
+            if BroadcastFunc != nil {
+                BroadcastFunc(event)
+            }
+        case err := <-errChan:
+            log.Printf("事件监听错误: %v", err)
+            return
+        }
+    }
 }
