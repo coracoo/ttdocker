@@ -2,13 +2,14 @@ module dockerpanel/backend // 必须与导入路径匹配
 
 go 1.22.0
 
-toolchain go1.22.11
-
 require (
-	github.com/docker/docker v27.5.1+incompatible
-	github.com/docker/go-connections v0.5.0
-	github.com/gin-gonic/gin v1.9.1
-	gopkg.in/yaml.v3 v3.0.1
+    github.com/docker/docker v24.0.6+incompatible
+    github.com/docker/go-connections v0.5.0
+    github.com/gin-contrib/cors v1.4.0    // 添加这一行
+    github.com/gin-gonic/gin v1.9.1
+    github.com/docker/distribution v2.8.2+incompatible
+    github.com/opencontainers/image-spec v1.0.2
+    gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
