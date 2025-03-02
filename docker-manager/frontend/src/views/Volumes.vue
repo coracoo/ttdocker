@@ -1,17 +1,15 @@
 <template>
   <div class="container">
-    <!-- 顶部操作栏 -->
+    <!-- 修改顶部操作栏 -->
     <div class="operation-bar">
       <el-button @click="fetchVolumes">
         <el-icon><Refresh /></el-icon>
       </el-button>
       <el-button type="primary" @click="createVolume">创建存储卷</el-button>
-      <el-button @click="clearVolumes">清理存储卷</el-button>
-      <el-button @click="deleteSelected">删除</el-button>
+      <el-button type="warning" @click="pruneVolumes">清除无用卷</el-button>
     </div>
 
     <!-- 存储卷列表 -->
-    <!-- 修改表格数据源 -->
     <el-table 
       :data="sortedVolumes" 
       style="width: 100%" 
@@ -20,6 +18,25 @@
       <el-table-column prop="Name" label="名称" />
       <el-table-column prop="Mountpoint" label="存储卷目录" />
       <el-table-column prop="Driver" label="模式" />
+      <!-- 添加使用状态列 -->
+      <el-table-column label="使用状态" width="100">
+        <template #default="scope">
+          <el-tag :type="scope.row.InUse ? 'success' : 'info'" effect="plain">
+            {{ scope.row.InUse ? '使用中' : '未使用' }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <!-- 添加使用容器列 -->
+      <el-table-column label="使用容器">
+        <template #default="scope">
+          <template v-if="scope.row.Containers && Object.keys(scope.row.Containers).length">
+            <div v-for="(container, id) in scope.row.Containers" :key="id">
+              {{ container.Name.substring(1) }}
+            </div>
+          </template>
+          <span v-else>-</span>
+        </template>
+      </el-table-column>
       <el-table-column label="创建时间">
         <template #default="scope">
           {{ formatTime(scope.row.CreatedAt) }}
@@ -30,6 +47,7 @@
           <el-button 
             size="small" 
             type="danger" 
+            :disabled="scope.row.InUse"
             @click="deleteVolume(scope.row)">删除</el-button>
         </template>
       </el-table-column>
@@ -93,7 +111,10 @@ const fetchVolumes = async () => {
   loading.value = true
   try {
     const response = await api.volumes.list()
-    volumes.value = Array.isArray(response.Volumes) ? response.Volumes : []
+    volumes.value = Array.isArray(response.Volumes) ? response.Volumes.map(volume => ({
+      ...volume,
+      InUse: volume.Containers && Object.keys(volume.Containers).length > 0
+    })) : []
     total.value = volumes.value.length
   } catch (error) {
     ElMessage.error('获取存储卷列表失败')
@@ -128,6 +149,29 @@ const deleteVolume = async (volume) => {
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('删除失败')
+    }
+  }
+}
+
+// 添加清除无用卷的方法
+const pruneVolumes = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '此操作将清除所有未被使用的存储卷，是否继续？',
+      '警告',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    
+    await api.volumes.prune()
+    ElMessage.success('无用存储卷已清除')
+    fetchVolumes()  // 刷新列表
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('清除失败：' + (error.response?.data?.error || '未知错误'))
     }
   }
 }

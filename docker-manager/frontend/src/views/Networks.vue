@@ -6,8 +6,6 @@
         <el-icon><Refresh /></el-icon>
       </el-button>
       <el-button type="primary" @click="createNetwork">创建网络</el-button>
-      <el-button @click="clearNetworks">清理网络</el-button>
-      <el-button @click="deleteSelected">删除</el-button>
     </div>
 
     <!-- 网络列表 -->
@@ -24,6 +22,39 @@
         label="模式">
         <template #default="scope">
           <el-tag size="small" type="info">{{ scope.row.Driver }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="使用容器">
+        <template #default="scope">
+          <template v-if="scope.row.Containers && Object.keys(scope.row.Containers).length">
+            <div class="container-list">
+              <template v-for="(container, id, index) in scope.row.Containers" :key="id">
+                <template v-if="index < 5">
+                  <el-tag size="small" class="container-tag">
+                    {{ container.Name.substring(1) }}
+                  </el-tag>
+                </template>
+              </template>
+              <el-popover
+                v-if="Object.keys(scope.row.Containers).length > 5"
+                placement="top"
+                :width="200"
+                trigger="click"
+              >
+                <template #reference>
+                  <el-tag size="small" type="info" class="container-tag">
+                    +{{ Object.keys(scope.row.Containers).length - 5 }}
+                  </el-tag>
+                </template>
+                <div class="popover-container-list">
+                  <div v-for="(container, id) in scope.row.Containers" :key="id">
+                    {{ container.Name.substring(1) }}
+                  </div>
+                </div>
+              </el-popover>
+            </div>
+          </template>
+          <span v-else>-</span>
         </template>
       </el-table-column>
       <el-table-column label="子网">
@@ -48,6 +79,7 @@
           <el-button 
             size="small" 
             type="danger" 
+            :disabled="isDefaultNetwork(scope.row.Name)"
             @click="deleteNetwork(scope.row)">删除</el-button>
         </template>
       </el-table-column>
@@ -181,6 +213,12 @@ const sortedNetworks = computed(() => {
 onMounted(() => {
   fetchNetworks()
 })
+
+// 添加判断是否为默认网络的方法
+const isDefaultNetwork = (name) => {
+  const defaultNetworks = ['none', 'host', 'bridge']
+  return defaultNetworks.includes(name)
+}
 </script>
 
 <style scoped>
@@ -208,5 +246,29 @@ onMounted(() => {
 
 .el-button .el-icon {
   margin-right: 0;
+}
+
+.container-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.container-tag {
+  margin: 2px;
+}
+
+.popover-container-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.popover-container-list > div {
+  padding: 4px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.popover-container-list > div:last-child {
+  border-bottom: none;
 }
 </style>

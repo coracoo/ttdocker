@@ -5,21 +5,53 @@
     width="800px"
   >
     <el-tabs v-model="activeTab">
-      <el-tab-pane label="镜像仓库" name="registry">
-        <el-form :model="registryForm" label-width="100px">
-          <el-form-item>
-            <div class="registry-header">
-              <el-button type="primary" @click="addRegistry">新建</el-button>
-            </div>
-          </el-form-item>
+      <el-tab-pane label="注册表" name="registry">
+        <el-form :model="registryForm">
+          <div class="registry-header">
+            <el-button type="primary" @click="addRegistry">新建注册表</el-button>
+          </div>
           
-          <el-table :data="registryForm.registries" style="width: 100%">
-            <el-table-column prop="name" label="别名" width="180" />
-            <el-table-column prop="url" label="仓库链接" />
+          <el-table :data="registryList" style="width: 100%">
+            <el-table-column prop="name" label="注册表名称" width="180">
+              <template #default="scope">
+                <el-input 
+                  v-model="scope.row.name" 
+                  placeholder="请输入注册表名称（必填）"
+                  :disabled="scope.row.key === 'docker.io'"
+                  @blur="validateRegistry(scope.row)"
+                />
+              </template>
+            </el-table-column>
+            <el-table-column prop="url" label="注册表地址">
+              <template #default="scope">
+                <el-input 
+                  v-model="scope.row.url" 
+                  placeholder="请输入注册表地址（必填）"
+                  :disabled="scope.row.key === 'docker.io'"
+                  @blur="validateRegistry(scope.row)"
+                />
+              </template>
+            </el-table-column>
+            <el-table-column prop="username" label="用户名">
+              <template #default="scope">
+                <el-input v-model="scope.row.username" placeholder="可选" />
+              </template>
+            </el-table-column>
+            <el-table-column prop="password" label="密码">
+              <template #default="scope">
+                <el-input v-model="scope.row.password" type="password" placeholder="可选" />
+              </template>
+            </el-table-column>
             <el-table-column label="操作" width="150">
               <template #default="scope">
-                <el-button link type="primary" @click="editRegistry(scope.row)">编辑</el-button>
-                <el-button link type="danger" @click="removeRegistry(scope.$index)">移除</el-button>
+                <el-button 
+                  v-if="scope.row.key !== 'docker.io'"
+                  link 
+                  type="danger" 
+                  @click="removeRegistry(scope.row.key)"
+                >
+                  移除
+                </el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -28,19 +60,21 @@
 
       <el-tab-pane label="代理设置" name="proxy">
         <el-form :model="proxyForm" label-width="120px">
+          <!-- 添加启用/禁用代理的开关 -->
           <el-form-item label="启用代理">
             <el-switch v-model="proxyForm.enabled" />
           </el-form-item>
           
+          <!-- 只有当启用代理时才显示代理设置 -->
           <template v-if="proxyForm.enabled">
             <el-form-item label="HTTP 代理">
-              <el-input v-model="proxyForm.http" placeholder="http://proxy:port" />
+              <el-input v-model="proxyForm.http" placeholder="例如: http://192.168.0.129:7890"></el-input>
             </el-form-item>
             <el-form-item label="HTTPS 代理">
-              <el-input v-model="proxyForm.https" placeholder="https://proxy:port" />
+              <el-input v-model="proxyForm.https" placeholder="例如: http://192.168.0.129:7890"></el-input>
             </el-form-item>
             <el-form-item label="无需代理">
-              <el-input v-model="proxyForm.no" placeholder="localhost,127.0.0.1" />
+              <el-input v-model="proxyForm.no" placeholder="例如: localhost,127.0.0.1"></el-input>
             </el-form-item>
           </template>
         </el-form>
@@ -80,10 +114,12 @@
 </template>
 
 <script setup>
-import { ref, defineEmits, defineProps } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import api from '../api'
+import { getProxy, updateProxy } from '../api/images'
+import { getRegistries, updateRegistries } from '../api/image_registry'  // 更新导入路径  // 添加新的导入
 
+// 删除 defineEmits 和 defineProps 的导入，因为它们是编译器宏
 const props = defineProps({
   modelValue: Boolean
 })
@@ -97,10 +133,7 @@ const dialogVisible = computed({
 
 const activeTab = ref('registry')
 
-const registryForm = ref({
-  registries: []
-})
-
+// 添加表单数据的定义
 const proxyForm = ref({
   enabled: false,
   http: '',
@@ -119,56 +152,149 @@ const defaultMirrors = [
   { label: '中科大', value: 'https://docker.mirrors.ustc.edu.cn' }
 ]
 
-// 加载配置
-const loadSettings = async () => {
-  try {
-    const config = await api.images.getProxy()
-    proxyForm.value = {
-      enabled: !!(config['http-proxy'] || config['https-proxy']),
-      http: config['http-proxy'] || '',
-      https: config['https-proxy'] || '',
-      no: config['no-proxy'] || ''
+const registryForm = ref({
+  registries: {
+    'docker.io': {
+      name: 'Docker Hub 官方注册表',
+      url: 'docker.io',
+      username: '',
+      password: ''
     }
-    mirrorForm.value.mirrors = config['registry-mirrors'] || []
-    registryForm.value.registries = config.registries || []
-  } catch (error) {
-    ElMessage.error('加载配置失败')
   }
+})
+
+// 添加 registryList 计算属性
+const registryList = computed(() => {
+  return Object.entries(registryForm.value.registries).map(([key, value]) => ({
+    key,
+    ...value
+  }))
+})
+
+// 添加验证方法
+const validateRegistry = (registry) => {
+  if (!registry.name.trim()) {
+    ElMessage.warning('注册表名称不能为空')
+    return false
+  }
+  if (!registry.url.trim()) {
+    ElMessage.warning('注册表地址不能为空')
+    return false
+  }
+  return true
 }
 
-// 保存配置
+// 修改保存配置的方法
 const saveSettings = async () => {
   try {
-    const config = {
-      'http-proxy': proxyForm.value.enabled ? proxyForm.value.http : '',
-      'https-proxy': proxyForm.value.enabled ? proxyForm.value.https : '',
-      'no-proxy': proxyForm.value.enabled ? proxyForm.value.no : '',
-      'registry-mirrors': mirrorForm.value.mirrors,
-      registries: registryForm.value.registries
+    // 验证所有注册表配置
+    let hasError = false
+    for (const registry of registryList.value) {
+      if (!validateRegistry(registry)) {
+        hasError = true
+        break
+      }
+    }
+
+    if (hasError) {
+      return
+    }
+
+    // 保存注册表配置
+    await updateRegistries(
+      Object.fromEntries(
+        registryList.value.map(registry => [
+          registry.key,
+          {
+            name: registry.name.trim(),
+            url: registry.url.trim(),
+            username: registry.username || '',
+            password: registry.password || ''
+          }
+        ])
+      )
+    )
+
+    // 保存代理和镜像加速配置
+    const proxyConfig = {
+      enabled: proxyForm.value.enabled, // 添加 enabled 属性
+      'HTTP Proxy': proxyForm.value.enabled ? proxyForm.value.http : '',
+      'HTTPS Proxy': proxyForm.value.enabled ? proxyForm.value.https : '',
+      'No Proxy': proxyForm.value.enabled ? proxyForm.value.no : '',
+      'registry-mirrors': mirrorForm.value.mirrors || []
     }
     
-    await api.images.updateProxy(config)
+    await updateProxy(proxyConfig)
     ElMessage.success('配置已更新，请重启 Docker 服务以生效')
     dialogVisible.value = false
   } catch (error) {
-    ElMessage.error('保存配置失败')
+    console.error('保存配置失败:', error)
+    if (error.response?.data?.error) {
+      ElMessage.error(error.response.data.error)
+    } else {
+      ElMessage.error('保存配置失败')
+    }
   }
 }
 
-// 仓库管理
+// 修改添加仓库的方法
 const addRegistry = () => {
-  registryForm.value.registries.push({
+  const newRegistry = {
     name: '',
-    url: ''
-  })
+    url: '',
+    username: '',
+    password: ''
+  }
+  // 生成唯一键名
+  const key = 'registry-' + Date.now()
+  registryForm.value.registries[key] = newRegistry
 }
 
+// 修改删除仓库的方法
+const removeRegistry = (key) => {
+  // 不允许删除 docker.io
+  if (key === 'docker.io') {
+    ElMessage.warning('不能删除默认仓库')
+    return
+  }
+  delete registryForm.value.registries[key]
+}
+
+// 修改加载配置的方法
+const loadSettings = async () => {
+  try {
+    // 加载代理配置
+    const proxyConfig = await getProxy()
+    proxyForm.value = {
+      enabled: proxyConfig.enabled || false, // 使用后端返回的 enabled 属性
+      http: proxyConfig['HTTP Proxy'] || '',
+      https: proxyConfig['HTTPS Proxy'] || '',
+      no: proxyConfig['No Proxy'] || ''
+    }
+    
+    mirrorForm.value.mirrors = proxyConfig['registry-mirrors'] || []
+    
+    // 加载注册表配置
+    const registriesData = await getRegistries()
+    const registries = registriesData || {}
+    
+    // 确保默认仓库存在
+    if (!registries['docker.io']) {
+      registries['docker.io'] = {
+        name: 'Docker Hub',
+        url: 'docker.io',
+        username: '',
+        password: ''
+      }
+    }
+    registryForm.value.registries = registries
+  } catch (error) {
+    console.error('加载配置失败:', error)
+    ElMessage.error('加载配置失败')
+  }
+}
 const editRegistry = (registry) => {
   // 实现编辑逻辑
-}
-
-const removeRegistry = (index) => {
-  registryForm.value.registries.splice(index, 1)
 }
 
 // 监听对话框打开
@@ -176,11 +302,10 @@ watch(() => dialogVisible.value, (val) => {
   if (val) {
     loadSettings()
   }
-})
-</script>
-
+})</script>
 <style scoped>
 .registry-header {
   margin-bottom: 16px;
+  padding-left: 0;
 }
 </style>

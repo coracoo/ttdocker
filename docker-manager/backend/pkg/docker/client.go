@@ -9,6 +9,7 @@ import (
 
     "github.com/docker/docker/api/types"
     "github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
     "github.com/docker/docker/api/types/network"
     "github.com/docker/docker/client"
     "github.com/docker/go-connections/nat"
@@ -63,6 +64,12 @@ func (c *Client) DeployCompose(ctx context.Context, composePath string) error {
     }
 
     return nil
+}
+
+// 添加卷清理方法
+func (c *Client) PruneVolumes(ctx context.Context) (types.VolumesPruneReport, error) {
+    // 使用原生的 Docker SDK 方法
+    return c.Client.VolumesPrune(ctx, filters.NewArgs())
 }
 
 // 创建网络函数
@@ -160,4 +167,9 @@ func NewDockerClient() (*Client, error) {
         return nil, err
     }
     return &Client{cli}, nil
+}
+
+// 关闭Client
+func (cli *Client) Close() error {
+    return cli.Client.Close()
 }
