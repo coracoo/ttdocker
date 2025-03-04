@@ -258,72 +258,122 @@ const connectWebSocket = () => {
       console.log('WebSocket连接成功')
       terminal.value.writeln('已连接到容器终端...')
       
-      // 发送命令  发送终端大小发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到服务器端  发送到容器日志API: ${terminalHttpUrl}\x1b[0m`)
-        return fetch(terminalHttpUrl)
-          .then(terminalResponse => {
-            if (terminalResponse.ok) {
-              terminal.value.writeln(`\x1b[32m容器日志API可访问: ${terminalResponse.status}\x1b[0m`)
-              terminal.value.writeln(`\x1b[32m这表明后端可能支持容器操作，但WebSocket终端可能未实现\x1b[0m`)
-            } else {
-              terminal.value.writeln(`\x1b[31m容器日志API返回错误: ${terminalResponse.status}\x1b[0m`)
-              terminal.value.writeln(`\x1b[31m这表明后端可能不支持此容器ID或终端功能未实现\x1b[0m`)
-            }
-          })
-          .catch(error => {
-            terminal.value.writeln(`\x1b[31m容器日志API请求失败: ${error.message}\x1b[0m`)
-          })
-      } else {
-        terminal.value.writeln(`\x1b[31mHTTP容器列表API返回错误: ${response.status}\x1b[0m`)
-        terminal.value.writeln(`\x1b[31m这表明后端API可能不可用或路径错误\x1b[0m`)
+      // 发送命令
+      const command = terminalForm.value.command === 'custom' 
+        ? terminalForm.value.customCommand 
+        : terminalForm.value.command
+      
+      socket.value.send(JSON.stringify({
+        type: 'command',
+        data: command
+      }))
+      
+      // 发送终端大小
+      if (terminal.value) {
+        const dimensions = terminal.value.rows && terminal.value.cols ? 
+          { rows: terminal.value.rows, cols: terminal.value.cols } : 
+          { rows: 24, cols: 80 }
+        
+        console.log('发送终端大小:', dimensions)
+        socket.value.send(JSON.stringify({
+          type: 'resize',
+          data: JSON.stringify(dimensions)
+        }))
       }
-    })
-    .catch(error => {
-      terminal.value.writeln(`\x1b[31mHTTP请求失败: ${error.message}\x1b[0m`)
-      terminal.value.writeln(`\x1b[31m这可能是网络问题或后端服务未运行\x1b[0m`)
-    })
+      
+      // 设置终端输入处理
+      terminal.value.onData(data => {
+        if (socket.value && socket.value.readyState === WebSocket.OPEN) {
+          socket.value.send(JSON.stringify({
+            type: 'input',
+            data: data
+          }))
+        }
+      })
+    }
+    
+    socket.value.onmessage = (event) => {
+      if (typeof event.data === 'string') {
+        terminal.value.write(event.data)
+      } else {
+        // 处理二进制数据
+        const reader = new FileReader()
+        reader.onload = () => {
+          terminal.value.write(reader.result)
+        }
+        reader.readAsText(event.data)
+      }
+    }
+    
+    socket.value.onerror = (error) => {
+      console.error('WebSocket错误:', error)
+      terminal.value.writeln(`\r\n\x1b[31mWebSocket错误\x1b[0m`)
+    }
+    
+    socket.value.onclose = (event) => {
+      console.log('WebSocket连接关闭:', event)
+      terminal.value.writeln(`\r\n\x1b[33mWebSocket连接关闭: 代码=${event.code}, 原因=${event.reason || '无'}\x1b[0m`)
+      
+      // 移除终端输入处理器
+      if (terminal.value) {
+        terminal.value.onData(() => {})
+      }
+    }
+    
+    // 监听窗口大小变化
+    window.addEventListener('resize', handleResize)
+  } catch (error) {
+    console.error('创建WebSocket连接失败:', error)
+    terminal.value.writeln(`\r\n\x1b[31m创建WebSocket连接失败: ${error.message}\x1b[0m`)
+    ElMessage.error(`无法连接到终端服务: ${error.message}`)
+  }
+}
+
+// 添加一个新方法，用于执行简单命令并显示结果
+const executeSimpleCommand = async () => {
+  if (!props.container || !props.container.Id) {
+    ElMessage.error('容器信息不完整')
+    return
+  }
   
-  // 检查后端路由是否正确配置
-  terminal.value.writeln(`\r\n\x1b[33m检查后端路由配置:\x1b[0m`)
-  terminal.value.writeln(`\x1b[33m1. 确认后端是否注册了 '/api/containers/:id/terminal' 路由\x1b[0m`)
-  terminal.value.writeln(`\x1b[33m2. 确认后端是否正确处理WebSocket升级请求\x1b[0m`)
-  terminal.value.writeln(`\x1b[33m3. 确认后端是否导入了 gorilla/websocket 包\x1b[0m`)
+  // 确保终端已初始化
+  if (!terminal.value) {
+    initTerminal()
+  }
   
-  // 尝试WebSocket连接
+  const containerId = props.container.Id
+  const command = terminalForm.value.command === 'custom' 
+    ? terminalForm.value.customCommand 
+    : terminalForm.value.command
+  
+  terminal.value.writeln(`\r\n\x1b[33m执行命令: ${command}\x1b[0m`)
+  
   try {
-    terminal.value.writeln(`\r\n\x1b[33m尝试WebSocket连接...\x1b[0m`)
-    const testSocket = new WebSocket(wsUrl)
+    const response = await fetch(`/api/containers/${containerId}/exec?cmd=${encodeURIComponent(command)}`)
     
-    testSocket.onopen = () => {
-      terminal.value.writeln(`\x1b[32mWebSocket连接成功!\x1b[0m`)
-      testSocket.send(JSON.stringify({type: 'test', data: 'hello'}))
-      
-      // 5秒后关闭测试连接
-      setTimeout(() => {
-        testSocket.close()
-      }, 5000)
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`服务器返回错误 (${response.status}): ${errorText}`)
     }
     
-    testSocket.onmessage = (event) => {
-      terminal.value.writeln(`\x1b[32m收到消息: ${typeof event.data === 'string' ? event.data.substring(0, 50) : '(binary data)'}\x1b[0m`)
-    }
+    const result = await response.json()
     
-    testSocket.onerror = (error) => {
-      terminal.value.writeln(`\x1b[31mWebSocket错误\x1b[0m`)
-    }
+    // 显示命令输出
+    terminal.value.writeln(`\r\n\x1b[32m命令输出:\x1b[0m`)
+    terminal.value.writeln(result.output)
     
-    testSocket.onclose = (event) => {
-      terminal.value.writeln(`\x1b[33mWebSocket连接关闭: 代码=${event.code}, 原因=${event.reason || '无'}\x1b[0m`)
-      
-      if (event.code === 1006) {
-        terminal.value.writeln(`\x1b[31m连接异常关闭，可能是后端未处理WebSocket请求\x1b[0m`)
-        terminal.value.writeln(`\x1b[33m建议检查:\x1b[0m`)
-        terminal.value.writeln(`\x1b[33m1. 后端是否注册了WebSocket处理函数\x1b[0m`)
-        terminal.value.writeln(`\x1b[33m2. 后端日志中是否有相关错误\x1b[0m`)
-        terminal.value.writeln(`\x1b[33m3. 后端是否正确配置了CORS和WebSocket升级\x1b[0m`)
+    // 保存命令到历史记录
+    if (command && !commandHistory.value.includes(command)) {
+      commandHistory.value.unshift(command)
+      // 限制历史记录数量
+      if (commandHistory.value.length > 10) {
+        commandHistory.value.pop()
       }
     }
   } catch (error) {
-    terminal.value.writeln(`\x1b[31m创建WebSocket连接失败: ${error.message}\x1b[0m`)
+    console.error('执行命令失败:', error)
+    terminal.value.writeln(`\r\n\x1b[31m执行命令失败: ${error.message}\x1b[0m`)
+    ElMessage.error(`执行命令失败: ${error.message}`)
   }
 }
 </script>
