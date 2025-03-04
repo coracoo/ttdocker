@@ -7,7 +7,7 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import axios from 'axios'
 
 // 配置 axios 默认值
-axios.defaults.baseURL = 'http://localhost:8080'
+axios.defaults.baseURL = 'http://192.168.0.118:8080'
 axios.defaults.headers.common['Content-Type'] = 'application/json'
 
 // 添加响应拦截器

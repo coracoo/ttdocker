@@ -2,6 +2,9 @@
   <div class="container">
     <!-- 顶部操作栏 -->
     <div class="operation-bar">
+      <el-button @click="fetchContainers">
+		<el-icon><Refresh /></el-icon>
+      </el-button>
       <el-button type="primary" @click="createContainer">创建容器</el-button>
       <el-button @click="clearContainers">清理容器</el-button>
       <el-button @click="batchStart">启动</el-button>
@@ -30,7 +33,13 @@
       <el-table-column type="selection" width="55" />
       <el-table-column prop="Names" label="名称" sortable>
         <template #default="scope">
-          {{ scope.row.Names?.[0]?.replace(/^\//, '') || '-' }}
+          <el-button 
+            link 
+            type="primary" 
+            @click="goToContainerDetail(scope.row)"
+          >
+            {{ scope.row.Names?.[0]?.replace(/^\//, '') || '-' }}
+          </el-button>
         </template>
       </el-table-column>
       <el-table-column prop="Image" label="镜像" />
@@ -132,15 +141,15 @@
 
 <!-- 在 script setup 中添加相关变量和方法 -->
 <script setup>
-import { ref, onMounted, computed, nextTick } from 'vue'  // 添加 nextTick
+import { ref, onMounted, computed, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 import { formatTime } from '../utils/format'
-// 修改导入语句
 import api from '../api'
 import ContainerTerminal from '../components/ContainerTerminal.vue'
 import ContainerLogs from '../components/ContainerLogs.vue'
+import { useRouter } from 'vue-router'
 
 // 变量定义
 const loading = ref(false)
@@ -162,6 +171,113 @@ const batchPause = () => batchAction('pause')
 const batchResume = () => batchAction('unpause')
 const batchDelete = () => batchAction('remove')
 
+// 批量操作函数
+const batchAction = async (action) => {
+  if (selectedContainers.value.length === 0) {
+    ElMessage.warning('请选择容器')
+    return
+  }
+  
+  try {
+    const actionMap = {
+      'start': '启动',
+      'stop': '停止',
+      'restart': '重启',
+      'kill': '强制停止',
+      'pause': '暂停',
+      'unpause': '恢复',
+      'remove': '删除'
+    }
+    
+    await ElMessageBox.confirm(`确定要${actionMap[action]}选中的 ${selectedContainers.value.length} 个容器吗？`, '确认', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    
+    await Promise.all(
+      selectedContainers.value.map(container => 
+        api.containers[action](container.Id)
+      )
+    )
+    
+    ElMessage.success(`已${actionMap[action]}${selectedContainers.value.length}个容器`)
+    fetchContainers()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('批量操作失败:', error)
+      ElMessage.error(`操作失败: ${error.message || '未知错误'}`)
+    }
+  }
+}
+
+// 清理容器函数
+const clearContainers = async () => {
+  try {
+    await ElMessageBox.confirm('确定要清理所有已停止的容器吗？', '警告', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    
+    await api.containers.prune()
+    ElMessage.success('已清理所有已停止的容器')
+    fetchContainers()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('清理容器失败:', error)
+      ElMessage.error(`清理失败: ${error.message || '未知错误'}`)
+    }
+  }
+}
+
+// 添加处理单个容器操作的函数
+const handleAction = async (container, action) => {
+  try {
+    const actionMap = {
+      'start': '启动',
+      'stop': '停止',
+      'restart': '重启',
+      'pause': '暂停',
+      'unpause': '恢复'
+    }
+    
+    await api.containers[action](container.Id)
+    ElMessage.success(`容器已${actionMap[action]}`)
+    fetchContainers()
+  } catch (error) {
+    console.error(`容器操作失败:`, error)
+    ElMessage.error(`操作失败: ${error.message || '未知错误'}`)
+  }
+}
+
+// 添加处理单个容器删除的函数
+const handleDelete = async (container) => {
+  try {
+    const containerName = container.Names?.[0]?.replace(/^\//, '') || container.Id.substring(0, 12)
+    
+    await ElMessageBox.confirm(`确定要删除容器 "${containerName}" 吗？`, '警告', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    
+    await api.containers.remove(container.Id)
+    ElMessage.success('容器已删除')
+    fetchContainers()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除容器失败:', error)
+      ElMessage.error(`删除失败: ${error.message || '未知错误'}`)
+    }
+  }
+}
+
+// 创建容器函数
+const createContainer = () => {
+  ElMessage.info('创建容器功能正在开发中')
+  // 这里可以添加创建容器的对话框逻辑
+}
 
 // 添加打开终端和日志的方法
 const openTerminal = (container) => {
@@ -176,7 +292,24 @@ const openLogs = (container) => {
   logDialogVisible.value = true
 }
 
-// 格式化端口映射 (移到前面，因为模板中使用了这个函数)
+// 获取容器列表
+const fetchContainers = async () => {
+  loading.value = true
+  try {
+    const data = await api.containers.list()
+    containers.value = Array.isArray(data) ? data : []
+    total.value = containers.value.length
+  } catch (error) {
+    console.error('Error fetching containers:', error)
+    ElMessage.error('获取容器列表失败')
+    containers.value = []
+    total.value = 0
+  } finally {
+    loading.value = false
+  }
+}
+
+// 格式化端口映射
 const formatPorts = (ports) => {
   if (!Array.isArray(ports)) return '-'
   return ports.map(port => {
@@ -193,23 +326,6 @@ const formatPortWithIP = (port) => {
     return `${ip}:${port.PublicPort}:${port.PrivatePort}/${port.Type}`
   }
   return `${port.PrivatePort}/${port.Type}`
-}
-
-// 获取容器列表 (移到前面，因为其他函数都依赖它)
-const fetchContainers = async () => {
-  loading.value = true
-  try {
-    const data = await api.containers.list()
-    containers.value = Array.isArray(data) ? data : []
-    total.value = containers.value.length
-  } catch (error) {
-    console.error('Error fetching containers:', error)
-    ElMessage.error('获取容器列表失败')
-    containers.value = []
-    total.value = 0
-  } finally {
-    loading.value = false
-  }
 }
 
 // 添加状态映射
@@ -287,9 +403,14 @@ const getContainerIP = (container) => {
   const ip = container.NetworkSettings?.Networks?.bridge?.IPAddress || '-'
   return ip
 }
-
+// 添加容器详情页面跳转方法
+const goToContainerDetail = (container) => {
+  const containerName = container.Names?.[0]?.replace(/^\//, '') || ''
+  if (containerName) {
+    router.push(`/containers/${containerName}`)
+  }
+}
 </script>
-
 <style scoped>
 .container {
   padding: 20px;

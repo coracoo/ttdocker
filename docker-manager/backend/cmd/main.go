@@ -39,8 +39,9 @@ func main() {
     api.RegisterVolumeRoutes(r)
     api.RegisterNetworkRoutes(r)
     api.RegisterComposeRoutes(r)
-    api.RegisterImageRegistryRoutes(r)  // 更新函数名
-
+    api.RegisterImageRegistryRoutes(r)
+	api.RegisterSystemRoutes(r)
+	//api.RegisterTerminalRoutes(r)
     // 使用特定前缀处理静态文件
     r.Static("/static", "./dist")
     

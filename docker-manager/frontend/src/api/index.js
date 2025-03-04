@@ -3,13 +3,14 @@
 import imagesApi from './images'
 import volumesApi from './volumes'
 import networksApi from './networks'
+import compose from './compose'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
 // 创建 axios 实例
 const instance = axios.create({
   baseURL: 'http://192.168.0.110:8080',  // 修改为实际的后端地址
-  timeout: 300000,  // 修改为5分钟
+  timeout: 300000, 
   headers: {
     'Content-Type': 'application/json'
   }
@@ -27,6 +28,7 @@ instance.interceptors.response.use(
 
 // 定义 API 对象
 const api = {
+
   containers: {
     list: (params) => instance.get('/api/containers', { params }),
     start: (id) => instance.post(`/api/containers/${id}/start`),
@@ -40,7 +42,7 @@ const api = {
       timeout: 0
     })
   },
-  // 修正 images 对象，移除嵌套的 images 对象
+  
   images: {
     list: () => instance.get('/api/images'),
     pull: (data) => instance.post('/api/images/pull', data),
@@ -57,7 +59,19 @@ const api = {
     getProxy: () => instance.get('/api/images/proxy'),
     updateProxy: (data) => instance.post('/api/images/proxy', data)
   },
+  
+  compose: {
+    list: () => instance.get('/api/compose/list'),
+    deploy: (data) => instance.post('/api/compose/project', data),
+    getStatus: (stack) => instance.get(`/api/compose/status/${stack}`),
+    remove: (stack) => instance.delete(`/api/compose/remove/${stack}`),
+    start: (name) => instance.post(`/api/compose/${name}/start`),
+    stop: (name) => instance.post(`/api/compose/${name}/stop`),
+    restart: (name) => instance.post(`/api/compose/${name}/restart`)
+  },
+  
   volumes: volumesApi,
+  
   networks: networksApi
 }
 

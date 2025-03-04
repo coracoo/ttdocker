@@ -4,7 +4,7 @@ package docker // 必须作为第一行
 import (
 	"context"
 	"log"
-	"github.com/docker/docker/api/types"      // 添加这个导入
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/client"
 )

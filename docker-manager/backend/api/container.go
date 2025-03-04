@@ -14,6 +14,22 @@ import (
     "github.com/gin-gonic/gin"
 )
 
+// 路由注册需导出的函数
+func RegisterContainerRoutes(r *gin.Engine) {
+    group := r.Group("/api/containers")
+    {
+        group.GET("", ListContainers)
+        group.POST("/:id/start", startContainer)
+        group.POST("/:id/stop", stopContainer)
+        group.POST("/:id/restart", restartContainer)
+        group.POST("/:id/pause", pauseContainer)
+        group.POST("/:id/unpause", unpauseContainer)
+        group.DELETE("/:id", removeContainer)
+		group.GET("/:id/logs", getContainerLogs)
+		group.GET("/:id/terminal", containerTerminal)
+    }
+}
+
 // 容器列表
 func ListContainers(c *gin.Context) {
     cli, err := docker.NewDockerClient()
@@ -90,23 +106,6 @@ func ListContainers(c *gin.Context) {
 }
 
 
-// 路由注册需导出的函数
-func RegisterContainerRoutes(r *gin.Engine) {
-    group := r.Group("/api/containers")
-    {
-        group.GET("", ListContainers)
-        group.POST("/:id/start", startContainer)
-        group.POST("/:id/stop", stopContainer)
-        group.POST("/:id/restart", restartContainer)
-        group.POST("/:id/pause", pauseContainer)
-        group.POST("/:id/unpause", unpauseContainer)
-        group.DELETE("/:id", removeContainer)
-		group.GET("/:id/logs", getContainerLogs)
-        group.POST("/:id/exec", execContainer) 
-    }
-}
-
-
 // 重启容器
 func restartContainer(c *gin.Context) {
     cli, err := docker.NewDockerClient()
@@ -161,7 +160,7 @@ func unpauseContainer(c *gin.Context) {
     c.JSON(http.StatusOK, gin.H{"message": "容器已恢复"})
 }
 
-// 其他处理函数实现
+// 启动容器
 func startContainer(c *gin.Context) {
     cli, err := docker.NewDockerClient()
     if err != nil {
@@ -239,7 +238,7 @@ func startContainer(c *gin.Context) {
     c.JSON(http.StatusOK, gin.H{"message": "容器已启动"})
 }
 
-// 其他容器操作函数也需要添加容器存在性检查
+// 停止容器
 func stopContainer(c *gin.Context) {
     cli, err := docker.NewDockerClient()
     if err != nil {
@@ -268,8 +267,9 @@ func stopContainer(c *gin.Context) {
     c.JSON(http.StatusOK, gin.H{"message": "容器已停止"})
 }
 
-// 只保留这一个 removeContainer 实现
+// 删除容器
 func removeContainer(c *gin.Context) {
+
     cli, err := docker.NewDockerClient()
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -295,6 +295,7 @@ func removeContainer(c *gin.Context) {
     c.JSON(http.StatusOK, gin.H{"message": "容器已删除"})
 }
 
+// 新建容器
 func createContainer(c *gin.Context) {
     // 实现创建逻辑...
 }

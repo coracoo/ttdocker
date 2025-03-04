@@ -10,29 +10,45 @@
           <el-icon><Monitor /></el-icon>
           <span>概览</span>
         </el-menu-item>
-        <el-sub-menu index="container-management">
-          <template #title>
-            <el-icon><Box /></el-icon>
-            <span>容器管理</span>
-          </template>
-          <el-menu-item index="/containers">容器列表</el-menu-item>
-          <el-menu-item index="/app-store">应用商店</el-menu-item>
-        </el-sub-menu>
+        
+        <el-menu-item index="/navigation">
+          <el-icon><Operation /></el-icon>
+          <span>导航栏</span>
+        </el-menu-item>
+
+        <el-menu-item index="/app-store">
+          <el-icon><Shop /></el-icon>
+          <span>应用商店</span>
+        </el-menu-item>
+
+        <el-menu-item index="/projects">
+          <el-icon><Folder /></el-icon>
+          <span>项目列表</span>
+        </el-menu-item>
+
+        <el-menu-item index="/containers">
+          <el-icon><Box /></el-icon>
+          <span>容器列表</span>
+        </el-menu-item>
+
         <el-menu-item index="/images">
           <el-icon><Picture /></el-icon>
           <span>镜像管理</span>
         </el-menu-item>
+
         <el-menu-item index="/volumes">
           <el-icon><Files /></el-icon>
-          <span>数据卷</span>
+          <span>卷管理</span>
         </el-menu-item>
+
         <el-menu-item index="/networks">
           <el-icon><Connection /></el-icon>
           <span>网络管理</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
-    
+
+    <!-- 保持其他部分不变 -->
     <el-container>
       <el-header>
         <div class="header-title">Docker Manager</div>
@@ -51,7 +67,16 @@
 
 <script setup>
 import { useRouter } from 'vue-router'
-import { Monitor, Box, Picture, Files, Connection } from '@element-plus/icons-vue'
+import { 
+  Monitor, 
+  Box, 
+  Picture, 
+  Files, 
+  Connection, 
+  Operation, 
+  Shop, 
+  Folder 
+} from '@element-plus/icons-vue'
 
 const router = useRouter()
 

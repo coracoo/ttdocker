@@ -244,6 +244,7 @@ import { Refresh, UploadFilled } from '@element-plus/icons-vue'
 import api from '../api'
 import { formatTime } from '../utils/format'
 import DockerSettings from '../components/DockerSettings.vue'
+
 import { getRegistries } from '../api/registry'
 
 const loading = ref(false)

@@ -45,7 +45,7 @@ service.interceptors.response.use(
     } else if (error.response) {
       const status = error.response.status
       const data = error.response.data
-
+    
       switch (status) {
         case 404:
           errorMessage = '请求的资源不存在'
@@ -56,7 +56,7 @@ service.interceptors.response.use(
         default:
           errorMessage = data.error || error.message || '未知错误'
       }
-
+    
       // 特殊处理镜像拉取错误
       if (error.config.url?.includes('/images/pull')) {
         if (data.error?.includes('no proxy configured')) {
@@ -68,7 +68,7 @@ service.interceptors.response.use(
         }
       }
     }
-
+    
     ElMessage.error(errorMessage)
     return Promise.reject(error)
   }
