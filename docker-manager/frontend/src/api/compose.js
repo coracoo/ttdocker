@@ -29,17 +29,33 @@ export default {
       method: 'post'
     })
   },
+  
   remove(name) {
-    // 修改为适应当前后端路由格式
     return request({
       url: `/api/compose/remove/${name}`,
       method: 'delete'
     })
   },
+  
   getStatus(name) {
     return request({
       url: `/api/compose/${name}/status`,
       method: 'get'
+    })
+  },
+  
+  getYaml(name) {
+    return request({
+      url: `/api/compose/${name}/yaml`,
+      method: 'get'
+    })
+  },
+  
+  saveYaml(name, content) {
+    return request({
+      url: `/api/compose/${name}/yaml`,
+      method: 'post',
+      data: { content }
     })
   }
 }

@@ -280,35 +280,40 @@ const fetchImages = async () => {
     const containersData = await api.containers.list({ all: true })
     
     // 获取使用中的镜像信息
-    const usedImages = new Set(containersData.map(container => {
-      const imageName = container.Image
-      // 如果镜像名称中没有标签，添加 :latest
-      return imageName.includes(':') ? imageName : `${imageName}:latest`
-    }))
+    const usedImages = new Set()
+    
+    // 添加空值检查
+    if (containersData && Array.isArray(containersData)) {
+      containersData.forEach(container => {
+        if (container && container.Image) {
+          const imageName = container.Image
+          // 如果镜像名称中没有标签，添加 :latest
+          usedImages.add(imageName.includes(':') ? imageName : `${imageName}:latest`)
+        }
+      })
+    }
     
     // 处理镜像数据，将每个标签作为单独的行
     const processedImages = []
-    imagesData.forEach(image => {
-      // 修改这里的判断逻辑，确保正确处理 RepoTags
-      if (!image.RepoTags || image.RepoTags.length === 0 || (image.RepoTags.length === 1 && image.RepoTags[0] === '<none>:<none>')) {
-        // 对于没有标签的镜像，使用 <none>:<none>
-        processedImages.push({
-          ...image,
-          RepoTags: ['<none>:<none>'],
-          isInUse: false
-        })
-      } else {
-        // 为每个标签创建一个记录
-        image.RepoTags.forEach(tag => {
+    if (imagesData && Array.isArray(imagesData)) {
+      imagesData.forEach(image => {
+        if (!image.RepoTags || image.RepoTags.length === 0 || (image.RepoTags.length === 1 && image.RepoTags[0] === '<none>:<none>')) {
           processedImages.push({
             ...image,
-            RepoTags: [tag],
-            // 检查该标签是否被使用
-            isInUse: usedImages.has(tag)
+            RepoTags: ['<none>:<none>'],
+            isInUse: false
           })
-        })
-      }
-    })
+        } else {
+          image.RepoTags.forEach(tag => {
+            processedImages.push({
+              ...image,
+              RepoTags: [tag],
+              isInUse: usedImages.has(tag)
+            })
+          })
+        }
+      })
+    }
     
     // 打印处理后的镜像数据，用于调试
     console.log('处理后的镜像数据:', processedImages)

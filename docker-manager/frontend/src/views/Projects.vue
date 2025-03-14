@@ -11,12 +11,21 @@
       </div>
     </div>
 
-    <el-table :data="projectList" style="width: 100%" v-loading="loading">
+    <el-table :data="projectList" style="width: 100%" v-loading="loading" >
       <el-table-column type="selection" width="55" />
-      <el-table-column type="index" label="序号" width="80" />
-      <el-table-column prop="name" label="名称" width="150" />
-      <el-table-column prop="containers" label="容器数" width="80" />
-      <el-table-column prop="status" label="状态" width="80">
+      <el-table-column type="index" label="序号" width="150" />
+      <el-table-column prop="name" label="名称" width="150">
+        <template #default="scope">
+          <span 
+            class="clickable-name"
+            @click="handleRowClick(scope.row)"
+          >
+            {{ scope.row.name }}
+          </span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="containers" label="容器数" width="150" />
+      <el-table-column prop="status" label="状态" width="150">
         <template #default="scope">
           <el-tag :type="scope.row.status === '运行中' ? 'success' : 'info'">
             {{ scope.row.status }}
@@ -24,7 +33,11 @@
         </template>
       </el-table-column>
 	  <el-table-column prop="path" label="路径" min-width="200" />
-      <el-table-column prop="createTime" label="创建时间" width="180" />
+      <el-table-column label="创建时间" width="250">
+        <template #default="scope">
+          {{ formatTime(scope.row.createTime) }}
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="200" fixed="right">
         <template #default="scope">
           <el-button-group>
@@ -124,6 +137,7 @@
 <script setup>
 // 修改导入语句，添加 nextTick
 import { ref, onMounted, shallowRef, nextTick, onBeforeUnmount } from 'vue'
+import { formatTime } from '../utils/format'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, InfoFilled, ArrowDown } from '@element-plus/icons-vue'
@@ -243,7 +257,14 @@ const handleRefresh = async () => {
     loading.value = false
   }
 }
-const handleEdit = (row) => {
+// 修改编辑处理函数
+const handleEdit = async (row) => {
+  // 检查项目状态
+  if (row.status === '运行中') {
+    ElMessage.warning('请先停止项目，然后再进行编辑')
+    return
+  }
+
   dialogTitle.value = '编辑项目'
   projectForm.value = { ...row }
   dialogVisible.value = true
@@ -275,6 +296,32 @@ const handleSave = async () => {
     ElMessage.warning('请填写必要信息')
     return
   }
+
+  // 如果是编辑模式，先确认
+  if (dialogTitle.value === '编辑项目') {
+    try {
+      await ElMessageBox.confirm(
+        '重新部署会删除原有项目并重新创建，是否继续？',
+        '警告',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }
+      )
+      
+      // 先删除原项目
+      await api.compose.remove(projectForm.value.name)
+      
+    } catch (error) {
+      if (error === 'cancel') {
+        return
+      }
+      ElMessage.error(`删除原项目失败: ${error.message || '未知错误'}`)
+      return
+    }
+  }
+
   // 清空部署日志
   deployLogs.value = []
   
@@ -536,7 +583,14 @@ services:
   border-radius: 4px;
   width: 100%;
 }
-
+.clickable-name {
+  color: #409EFF;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.clickable-name:hover {
+  color: #66b1ff;
+}
 .editor-header {
   display: flex;
   justify-content: space-between;

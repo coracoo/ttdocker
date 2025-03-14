@@ -39,6 +39,9 @@ func RegisterComposeRoutes(r *gin.Engine) {
         group.POST("/:name/stop", stopProject)
         group.GET("/:name/status", getStackStatus)
         group.DELETE("/remove/:name", removeProject)  // 修改为匹配当前请求格式
+        group.GET("/:name/logs", getComposeLogs)  // 确保这个路由已添加
+        group.GET("/:name/yaml", getProjectYaml)    // 添加获取 YAML 路由
+        group.POST("/:name/yaml", saveProjectYaml)  // 添加保存 YAML 路由
     }
 }
 
@@ -318,7 +321,7 @@ func deployEvents(c *gin.Context) {
 }
 // getStackStatus 获取堆栈状态
 func getStackStatus(c *gin.Context) {
-    name := c.Param("name")  // 修改这里，使用 name 而不是 stack
+    name := c.Param("name")
     cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -326,21 +329,47 @@ func getStackStatus(c *gin.Context) {
     }
     defer cli.Close()
 
+    // 获取项目的所有容器
     containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{
         All: true,
         Filters: filters.NewArgs(
-            filters.Arg("label", "com.docker.compose.project=" + name),  // 修改这里
+            filters.Arg("label", "com.docker.compose.project=" + name),
         ),
     })
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
+	
+    // 转换容器信息为前端需要的格式
+    containerList := make([]map[string]interface{}, 0)
+    for _, container := range containers {
+        // 获取容器详细信息
+        stats, err := cli.ContainerStats(context.Background(), container.ID, false)
+        if err != nil {
+            continue
+        }
+        defer stats.Body.Close()
 
-    c.JSON(http.StatusOK, containers)
+        containerInfo := map[string]interface{}{
+            "name": strings.TrimPrefix(container.Names[0], "/"),
+            "image": container.Image,
+            "status": container.State,
+            "state": container.State,
+            "cpu": "0%",  // 这里可以通过解析 stats 获取实际值
+            "memory": "0 MB",  // 这里可以通过解析 stats 获取实际值
+            "networkRx": "0 B",
+            "networkTx": "0 B",
+        }
+        containerList = append(containerList, containerInfo)
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "containers": containerList,
+    })
 }
-// removeStack 函数需要重命名为 removeProject 以保持一致性
-// 并且需要使用 name 参数
+
+// removeStack 函数
 func removeProject(c *gin.Context) {
     name := c.Param("name")  // 修改这里，使用 name 而不是 stack
     projectDir := filepath.Join("data", "project", name)
@@ -363,4 +392,130 @@ func removeProject(c *gin.Context) {
     }
     
     c.JSON(http.StatusOK, gin.H{"message": "项目已删除"})
+}
+
+
+// 添加获取 compose 日志的处理函数
+func getComposeLogs(c *gin.Context) {
+    name := c.Param("name")
+    cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    defer cli.Close()
+
+    // 获取项目的所有容器
+    containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{
+        All: true,
+        Filters: filters.NewArgs(
+            filters.Arg("label", "com.docker.compose.project="+name),
+        ),
+    })
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    // 设置响应头，支持 SSE
+    c.Writer.Header().Set("Content-Type", "text/event-stream")
+    c.Writer.Header().Set("Cache-Control", "no-cache")
+    c.Writer.Header().Set("Connection", "keep-alive")
+    c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+
+    // 创建一个通道来接收所有容器的日志
+    logsChan := make(chan string)
+    done := make(chan bool)
+
+    // 为每个容器启动一个 goroutine 来读取日志
+    for _, container := range containers {
+        containerName := strings.TrimPrefix(container.Names[0], "/")
+        go func(containerID, containerName string) {
+            options := types.ContainerLogsOptions{
+                ShowStdout: true,
+                ShowStderr: true,
+                Follow:    true,
+                Timestamps: true,
+                Tail:      "100",
+            }
+
+            logs, err := cli.ContainerLogs(context.Background(), containerID, options)
+            if err != nil {
+                logsChan <- fmt.Sprintf("error: 获取容器 %s 日志失败: %s", containerName, err.Error())
+                return
+            }
+            defer logs.Close()
+
+            reader := bufio.NewReader(logs)
+            for {
+                line, err := reader.ReadString('\n')
+                if err != nil {
+                    if err != io.EOF {
+                        logsChan <- fmt.Sprintf("error: 读取容器 %s 日志失败: %s", containerName, err.Error())
+                    }
+                    break
+                }
+                logsChan <- fmt.Sprintf("data: [%s] %s", containerName, line)
+            }
+        }(container.ID, containerName)
+    }
+
+    // 监听客户端断开连接
+    go func() {
+        <-c.Request.Context().Done()
+        close(done)
+    }()
+
+    // 发送日志到客户端
+    c.Stream(func(w io.Writer) bool {
+        select {
+        case <-done:
+            return false
+        case msg := <-logsChan:
+            c.SSEvent("message", msg)
+            return true
+        }
+    })
+}
+
+// 添加获取 YAML 配置的处理函数
+func getProjectYaml(c *gin.Context) {
+    name := c.Param("name")
+    projectDir := filepath.Join("data", "project", name)
+    yamlPath := filepath.Join(projectDir, "docker-compose.yml")
+    
+    // 读取 YAML 文件
+    content, err := os.ReadFile(yamlPath)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "读取配置文件失败: " + err.Error()})
+        return
+    }
+    
+    c.JSON(http.StatusOK, gin.H{
+        "content": string(content),
+    })
+}
+
+// 添加保存 YAML 配置的处理函数
+func saveProjectYaml(c *gin.Context) {
+    name := c.Param("name")
+    var data struct {
+        Content string `json:"content"`
+    }
+    
+    if err := c.BindJSON(&data); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求数据"})
+        return
+    }
+    
+    projectDir := filepath.Join("data", "project", name)
+    yamlPath := filepath.Join(projectDir, "docker-compose.yml")
+    
+    // 保存 YAML 文件
+    if err := os.WriteFile(yamlPath, []byte(data.Content), 0644); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "保存配置文件失败: " + err.Error()})
+        return
+    }
+    
+    c.JSON(http.StatusOK, gin.H{"message": "配置已保存"})
 }

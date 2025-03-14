@@ -45,9 +45,9 @@
 
       <el-tab-pane label="容器" name="containers">
         <el-table :data="containerList" style="width: 100%">
-          <el-table-column type="index" label="序号" width="60" />
-          <el-table-column prop="name" label="名称" min-width="150" />
-          <el-table-column prop="image" label="镜像" min-width="150" />
+          <el-table-column type="index" label="序号" width="80" />
+          <el-table-column prop="name" label="名称" width="150" />
+          <el-table-column prop="image" label="镜像" width="150" />
           <el-table-column prop="status" label="状态" width="100">
             <template #default="scope">
               <el-tag :type="scope.row.status === 'running' ? 'success' : 'info'">
@@ -55,9 +55,9 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="cpu" label="CPU" width="100" />
-          <el-table-column prop="memory" label="内存" width="100" />
-          <el-table-column prop="network" label="网络" width="120" />
+          <el-table-column prop="cpu" label="CPU" min-width="100" />
+          <el-table-column prop="memory" label="内存" min-width="100" />
+          <el-table-column prop="network" label="网络" min-width="120" />
           <el-table-column label="操作" width="150" fixed="right">
             <template #default="scope">
               <el-button-group>
@@ -108,6 +108,7 @@ import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Back } from '@element-plus/icons-vue'
+import api from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -116,114 +117,242 @@ const activeTab = ref('yaml')
 const isRunning = ref(true)
 const autoScroll = ref(true)
 const logsRef = ref(null)
-
-// YAML配置
+const containerList = ref([])  // 修改为空数组，等待从后端获取数据
+const logs = ref([])  // 添加日志数组
+const logWebSocket = ref(null)  // 移动到这里统一声明
 const yamlContent = ref('')
 
-// 容器列表
-const containerList = ref([
-  {
-    name: 'mtphotos',
-    image: 'mtphotos/mt-photos:latest',
-    status: 'running',
-    cpu: '4.30%',
-    memory: '267 MB',
-    network: '4 MB / 120 KB'
-  },
-  {
-    name: 'mtphotos_ai',
-    image: 'mtphotos/mt-photos-ai:latest',
-    status: 'running',
-    cpu: '0.20%',
-    memory: '2 MB',
-    network: '9 KB / 13 KB'
-  }
-])
-
-// 日志数据
-const logs = ref([])
-let logWebSocket = null
-
+// 添加返回方法
 const goBack = () => {
   router.push('/projects')
 }
 
-// YAML相关方法
+// 添加获取容器列表的方法
+const fetchContainers = async () => {
+  try {
+    const response = await api.compose.getStatus(projectName.value)
+    if (response && Array.isArray(response.containers)) {
+      containerList.value = response.containers.map(container => ({
+        name: container.name,
+        image: container.image,
+        status: container.state || container.status,
+        cpu: container.cpu || '0%',
+        memory: container.memory || '0 MB',
+        network: `${container.networkRx || '0 B'} / ${container.networkTx || '0 B'}`
+      }))
+      // 更新项目运行状态
+      isRunning.value = containerList.value.some(c => c.status === 'running')
+    } else {
+      containerList.value = []
+      console.warn('返回的容器数据格式不正确:', response)
+    }
+  } catch (error) {
+    console.error('获取容器列表失败:', error.response?.data || error.message)
+    ElMessage.error(`获取容器列表失败: ${error.response?.data?.error || '服务器错误'}`)
+    containerList.value = []
+  }
+}
+
+// 修改容器操作方法
+const handleContainerRestart = async (container) => {
+  try {
+    await api.compose.restart(projectName.value)
+    ElMessage.success(`重启容器 ${container.name} 成功`)
+    await fetchContainers() // 刷新容器列表
+  } catch (error) {
+    ElMessage.error(`重启容器 ${container.name} 失败`)
+  }
+}
+
+const handleContainerStop = async (container) => {
+  try {
+    await api.compose.stop(projectName.value)
+    ElMessage.success(`停止容器 ${container.name} 成功`)
+    await fetchContainers() // 刷新容器列表
+  } catch (error) {
+    ElMessage.error(`停止容器 ${container.name} 失败`)
+  }
+}
+
+// 修改项目操作方法
+const handleStart = async () => {
+  try {
+    await api.compose.start(projectName.value)
+    ElMessage.success('启动项目成功')
+    isRunning.value = true
+    await fetchContainers() // 刷新容器列表
+  } catch (error) {
+    ElMessage.error('启动项目失败')
+  }
+}
+
+const handleStop = async () => {
+  try {
+    await api.compose.stop(projectName.value)
+    ElMessage.success('停止项目成功')
+    isRunning.value = false
+    await fetchContainers() // 刷新容器列表
+  } catch (error) {
+    ElMessage.error('停止项目失败')
+  }
+}
+
+const handleRestart = async () => {
+  try {
+    await api.compose.restart(projectName.value)
+    ElMessage.success('重启项目成功')
+    await fetchContainers() // 刷新容器列表
+  } catch (error) {
+    ElMessage.error('重启项目失败')
+  }
+}
+
+// 修改获取 YAML 配置的方法
+const fetchYamlContent = async () => {
+  try {
+    console.log('api.compose:', api.compose); // 添加调试日志
+    const response = await api.compose.getYaml(projectName.value)
+    console.log('YAML Response:', response); // 添加调试日志
+    
+    if (response && response.content) {
+      yamlContent.value = response.content
+    } else {
+      console.warn('YAML内容为空')
+      yamlContent.value = ''
+    }
+  } catch (error) {
+    console.error('获取YAML配置失败:', error)
+    ElMessage.error('获取YAML配置失败')
+  }
+}
+
+// 修改保存 YAML 的方法
 const handleSaveYaml = async () => {
   try {
-    // TODO: 调用后端API保存YAML
+    await api.compose.saveYaml(projectName.value, yamlContent.value)
     ElMessage.success('保存成功')
   } catch (error) {
+    console.error('保存YAML失败:', error)
     ElMessage.error('保存失败')
   }
 }
 
-// 容器相关方法
-const handleContainerRestart = (container) => {
-  ElMessage.success(`重启容器 ${container.name}`)
+onMounted(async () => {
+  try {
+    // 获取项目信息和容器列表
+    await fetchContainers()
+    
+    // 获取YAML配置
+    await fetchYamlContent()
+
+    // 设置定时刷新
+    refreshTimer = setInterval(fetchContainers, 5000)
+    
+    // 设置WebSocket连接
+    setupWebSocket()
+  } catch (error) {
+    console.error('初始化失败:', error)
+  }
+})
+
+// 添加定时刷新
+let refreshTimer = null
+
+onUnmounted(() => {
+  // 清理定时器
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+  
+  // 清理 EventSource
+  if (logWebSocket.value) {
+    logWebSocket.value.close()
+    logWebSocket.value = null
+  }
+  
+  // 清理数据
+  logs.value = []
+  containerList.value = []
+  yamlContent.value = ''
+})
+
+// 替换 setupWebSocket 函数
+const setupWebSocket = () => {
+  if (logWebSocket.value) {
+    logWebSocket.value.close()
+  }
+
+  const eventSource = new EventSource(`/api/compose/${projectName.value}/logs`)
+  
+  eventSource.onopen = () => {
+    console.log('SSE connection established')
+    logs.value.push({
+      type: 'info',
+      content: '已连接到日志服务'
+    })
+  }
+  
+  eventSource.onmessage = (event) => {
+    const data = event.data
+    if (data.startsWith('error:')) {
+      logs.value.push({
+        type: 'error',
+        content: data.substring(6)
+      })
+    } else {
+      logs.value.push({
+        type: 'info',
+        content: data
+      })
+    }
+    
+    if (autoScroll.value) {
+      scrollToBottom()
+    }
+  }
+  
+  eventSource.onerror = (error) => {
+    console.error('SSE error:', error)
+    logs.value.push({
+      type: 'error',
+      content: '日志连接错误'
+    })
+    eventSource.close()
+  }
+
+  // 保存 EventSource 实例以便后续清理
+  logWebSocket.value = eventSource
 }
 
-const handleContainerStop = (container) => {
-  ElMessage.success(`停止容器 ${container.name}`)
-}
+// 修改 onUnmounted 钩子中的清理代码
+onUnmounted(() => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+  }
+  if (logWebSocket.value) {
+    logWebSocket.value.close()
+  }
+})
 
-// 项目操作方法
-const handleStart = () => {
-  ElMessage.success('启动项目')
-  isRunning.value = true
-}
-
-const handleStop = () => {
-  ElMessage.success('停止项目')
-  isRunning.value = false
-}
-
-const handleRestart = () => {
-  ElMessage.success('重启项目')
-}
-
-// 日志相关方法
+// 添加清理日志的方法
 const handleClearLogs = () => {
   logs.value = []
 }
 
-const setupWebSocket = () => {
-  // TODO: 实现WebSocket连接
-  // logWebSocket = new WebSocket(...)
-}
-
+// 添加自动滚动相关代码
 const scrollToBottom = () => {
-  if (logsRef.value && autoScroll.value) {
+  if (logsRef.value) {
     nextTick(() => {
       logsRef.value.scrollTop = logsRef.value.scrollHeight
     })
   }
 }
 
-watch(logs, scrollToBottom)
-
-onMounted(() => {
-  // 获取项目信息
-  // 获取YAML配置
-  yamlContent.value = `version: '3'
-services:
-  mtphotos:
-    image: mtphotos/mt-photos:latest
-    container_name: mtphotos
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./data:/data
-    environment:
-      - TZ=Asia/Shanghai`
-
-  // 设置WebSocket连接
-  setupWebSocket()
-})
-
-onUnmounted(() => {
-  if (logWebSocket) {
-    logWebSocket.close()
+// 监听日志变化
+watch(logs, () => {
+  if (autoScroll.value) {
+    scrollToBottom()
   }
 })
 </script>
@@ -308,7 +437,11 @@ onUnmounted(() => {
   color: #ff4949;
 }
 
-.logs-content .warning {
-  color: #e6a23c;
+.logs-content .success {
+  color: #67c23a;
+}
+
+.logs-content .info {
+  color: #909399;
 }
 </style>

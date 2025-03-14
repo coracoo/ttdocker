@@ -1,35 +1,32 @@
 import request from '../utils/request'
 
 export default {
-  // 获取所有应用
-  getApps() {
+  // 获取所有模板
+  getTemplates() {
     return request({
-      url: '/api/appstore/apps',
+      url: 'http://localhost:3001/api/templates',
       method: 'get'
     })
   },
-  
-  // 获取单个应用详情
-  getAppDetail(id) {
+
+  // 获取单个模板
+  getTemplate(id) {
     return request({
-      url: `/api/appstore/apps/${id}`,
+      url: `http://localhost:3001/api/templates/${id}`,
       method: 'get'
     })
   },
-  
-  // 部署应用
-  deployApp(id) {
+
+  // 部署模板
+  deployTemplate(template) {
     return request({
-      url: `/api/appstore/deploy/${id}`,
-      method: 'post'
-    })
-  },
-  
-  // 检查应用状态
-  checkAppStatus(id) {
-    return request({
-      url: `/api/appstore/status/${id}`,
-      method: 'get'
+      url: '/api/compose/project',
+      method: 'post',
+      data: {
+        name: template.name.toLowerCase(),
+        compose: template.compose,
+        autoStart: true
+      }
     })
   }
 }
